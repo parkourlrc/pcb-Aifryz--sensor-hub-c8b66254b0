@@ -1,13 +1,11 @@
 #pragma once
 
-#ifdef _WIN32
+#if !defined(_WIN32)
+    #include_next <unistd.h>
+#else
     #include <BaseTsd.h>
     using ssize_t = SSIZE_T;
-#else
-    #include <sys/types.h>
 #endif
-
-
 
 #define STDOUT_FILENO 1
 

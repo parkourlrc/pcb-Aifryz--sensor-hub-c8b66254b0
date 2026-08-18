@@ -2,25 +2,34 @@
 
 #include <algorithm>
 #include <cstring>
+#include <sys/syscall.h>
 #include <memory>
 
+namespace {
+
 // Header layout (32-bit little endian): lower 24 bits = size, upper 8 bits = tag
-static inline uint32_t make_header(size_t size, uint8_t tag)
+inline uint32_t make_header(size_t size, uint8_t tag)
 {
     return (static_cast<uint32_t>(tag) << 24) | (static_cast<uint32_t>(size) & 0x00FFFFFFU);
 }
 
-static inline size_t header_size_to_length(uint32_t header)
+inline size_t header_size_to_length(uint32_t header)
 {
     return static_cast<size_t>(header & 0x00FFFFFFU);
 }
 
-static inline uint8_t header_to_tag(uint32_t header)
+inline uint8_t header_to_tag(uint32_t header)
 {
     return static_cast<uint8_t>(header >> 24);
 }
 
+// Align length up to 4 bytes
+inline size_t padded_len(size_t len)
+{
+    return (len + 3) & ~static_cast<size_t>(3);
+}
 
+}
 
 tagged_message_buffer::tagged_message_buffer(uint8_t* buffer, size_t buffer_size)
     : m_buffer(buffer)
@@ -35,11 +44,7 @@ tagged_message_buffer::tagged_message_buffer(uint8_t* buffer, size_t buffer_size
     std::fill(m_buffer, m_buffer + m_message_header_size, 0);
 }
 
-// Align length up to 4 bytes
-static inline size_t padded_len(size_t len)
-{
-    return (len + 3) & ~static_cast<size_t>(3);
-}
+
 
 bool tagged_message_buffer::write(const uint8_t* data, size_t len, uint8_t tag)
 {
@@ -145,19 +150,16 @@ uint8_t tagged_message_buffer::get_next_read_tag() const
 
 uint32_t tagged_message_buffer::read_message_header(size_t header_index) const
 {
-    // Header is always written contiguous (write ensures this), so read directly
-    uint32_t h = 0;
-    for (size_t i = 0; i < m_message_header_size; ++i)
-    {
-        h |= static_cast<uint32_t>(m_buffer[header_index + i]) << (8 * i);
-    }
-    return h;
+    // Header should be aligned to 4 bytes, so read it as a uint32_t directly
+    uint8_t* header_u8 = m_buffer+header_index;
+    uint32_t* header_ptr = reinterpret_cast<uint32_t*>(header_u8);
+    return *header_ptr;
 }
 
 void tagged_message_buffer::write_message_header(size_t header_index, uint32_t header)
 {
-    for (size_t i = 0; i < m_message_header_size; ++i)
-    {
-        m_buffer[header_index + i] = static_cast<uint8_t>(header >> (8 * i));
-    }
+    // Header should be aligned to 4 bytes, so read it as a uint32_t directly
+    uint8_t* header_u8 = m_buffer+header_index;
+    uint32_t* header_ptr = reinterpret_cast<uint32_t*>(header_u8);
+    *header_ptr = header;
 }
